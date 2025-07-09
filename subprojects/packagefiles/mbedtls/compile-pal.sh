@@ -1,6 +1,6 @@
 #!/bin/sh
 
-CFLAGS='-O2 -DMBEDTLS_CONFIG_FILE=\"mbedtls/config-pal.h\"'
+CFLAGS='-O0 -g -DMBEDTLS_CONFIG_FILE=\"mbedtls/config-pal.h\"'
 
 # TODO: We disable the stack protector because the default configuration doesn't work inside
 # Gramine. Instead, we should pass the right stack protector options from Meson.
