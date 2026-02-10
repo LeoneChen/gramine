@@ -797,6 +797,11 @@ int _PalStreamSecureFree(LIB_SSL_CONTEXT* ssl_ctx) {
 
 int _PalStreamSecureRead(LIB_SSL_CONTEXT* ssl_ctx, uint8_t* buf, size_t len, bool is_blocking) {
     int ret = lib_SSLRead(ssl_ctx, buf, len);
+    // int ret = 0, read_cnt = 0;
+    // do {
+    //     read_cnt = lib_SSLRead(ssl_ctx, buf, len);
+    //     ret += read_cnt;
+    // } while (read_cnt > 0 && (size_t)ret < len);
     if (is_blocking && ret == PAL_ERROR_TRYAGAIN) {
         /* mbedTLS wrappers collapse host errors `EAGAIN` and `EINTR` into one error PAL
          * (`PAL_ERROR_TRYAGAIN`). We use the fact that blocking reads do not return `EAGAIN` to

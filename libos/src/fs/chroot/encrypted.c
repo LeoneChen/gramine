@@ -40,6 +40,7 @@
 #include "libos_fs.h"
 #include "libos_fs_encrypted.h"
 #include "libos_vma.h"
+#include "libos_process.h"
 #include "perm.h"
 #include "stat.h"
 #include "toml_utils.h"
@@ -464,13 +465,24 @@ static ssize_t chroot_encrypted_read(struct libos_handle* hdl, void* buf, size_t
     size_t actual_count;
 
     lock(&hdl->inode->lock);
+#if ENABLE_SLSAN
+    log_file_pos(__FUNCTION__, false, hdl, hdl->id, &hdl->pos, hdl->uri, pos, *pos, -1);
+#endif
     int ret = encrypted_file_read(enc, buf, count, *pos, &actual_count);
     unlock(&hdl->inode->lock);
 
     if (ret < 0)
         return ret;
     assert(actual_count <= count);
+#if ENABLE_SLSAN
+    file_off_t orig_pos = *pos;
+#endif
     *pos += actual_count;
+#if ENABLE_SLSAN
+    if (orig_pos != *pos) {
+        log_file_pos(__FUNCTION__, true, hdl, hdl->id, &hdl->pos, hdl->uri, pos, orig_pos, *pos);
+    }
+#endif
     return actual_count;
 }
 
@@ -489,6 +501,9 @@ static ssize_t chroot_encrypted_write(struct libos_handle* hdl, const void* buf,
 
     lock(&hdl->inode->lock);
 
+#if ENABLE_SLSAN
+    log_file_pos(__FUNCTION__, false, hdl, hdl->id, &hdl->pos, hdl->uri, pos, *pos, -1);
+#endif
     file_off_t actual_pos = (hdl->flags & O_APPEND) ? hdl->inode->size : *pos;
     int ret = encrypted_file_write(enc, buf, count, actual_pos, &actual_count);
     if (ret < 0) {
@@ -497,7 +512,15 @@ static ssize_t chroot_encrypted_write(struct libos_handle* hdl, const void* buf,
     }
 
     assert(actual_count <= count);
+#if ENABLE_SLSAN
+    file_off_t orig_pos = *pos;
+#endif
     *pos = actual_pos + actual_count;
+#if ENABLE_SLSAN
+    if (orig_pos != *pos) {
+        log_file_pos(__FUNCTION__, true, hdl, hdl->id, &hdl->pos, hdl->uri, pos, orig_pos, *pos);
+    }
+#endif
     if (hdl->inode->size < *pos)
         hdl->inode->size = *pos;
 

@@ -8,6 +8,7 @@
 #include "libos_fs.h"
 #include "libos_lock.h"
 #include "libos_vma.h"
+#include "libos_process.h"
 #include "stat.h"
 
 int generic_seek(file_off_t pos, file_off_t size, file_off_t offset, int origin,
@@ -110,11 +111,23 @@ file_off_t generic_inode_seek(struct libos_handle* hdl, file_off_t offset, int o
 
     maybe_lock_pos_handle(hdl);
     lock(&hdl->inode->lock);
+#if ENABLE_SLSAN
+    if (origin == SEEK_CUR) {
+        log_file_pos(__FUNCTION__, false, hdl, hdl->id, &hdl->pos, hdl->uri, &hdl->pos, hdl->pos,
+                     -1);
+    }
+#endif
     file_off_t pos = hdl->pos;
     file_off_t size = hdl->inode->size;
 
     ret = generic_seek(pos, size, offset, origin, &pos);
     if (ret == 0) {
+#if ENABLE_SLSAN
+        if (hdl->pos != pos) {
+            log_file_pos(__FUNCTION__, true, hdl, hdl->id, &hdl->pos, hdl->uri, &hdl->pos, hdl->pos,
+                         pos);
+        }
+#endif
         hdl->pos = pos;
         ret = pos;
     }

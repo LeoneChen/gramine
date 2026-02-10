@@ -18,6 +18,7 @@
 #include "libos_handle.h"
 #include "libos_lock.h"
 #include "libos_vma.h"
+#include "libos_process.h"
 #include "linux_abi/errors.h"
 #include "perm.h"
 #include "stat.h"
@@ -228,11 +229,22 @@ static ssize_t tmpfs_read(struct libos_handle* hdl, void* buf, size_t size, file
 
     struct libos_mem_file* mem = inode->data;
 
+#if ENABLE_SLSAN
+    log_file_pos(__FUNCTION__, false, hdl, hdl->id, &hdl->pos, hdl->uri, pos, *pos, -1);
+#endif
     ret = mem_file_read(mem, *pos, buf, size);
     if (ret < 0)
         goto out;
 
+#if ENABLE_SLSAN
+    file_off_t orig_pos = *pos;
+#endif
     *pos += ret;
+#if ENABLE_SLSAN
+    if (orig_pos != *pos) {
+        log_file_pos(__FUNCTION__, true, hdl, hdl->id, &hdl->pos, hdl->uri, pos, orig_pos, *pos);
+    }
+#endif
 
     /* technically, we should update access time here, but we skip this because it could hurt
      * performance on Linux-SGX host */
@@ -259,6 +271,9 @@ static ssize_t tmpfs_write(struct libos_handle* hdl, const void* buf, size_t siz
     lock(&inode->lock);
     struct libos_mem_file* mem = inode->data;
 
+#if ENABLE_SLSAN
+    log_file_pos(__FUNCTION__, false, hdl, hdl->id, &hdl->pos, hdl->uri, pos, *pos, -1);
+#endif
     file_off_t actual_pos = (hdl->flags & O_APPEND) ? hdl->inode->size : *pos;
     ret = mem_file_write(mem, actual_pos, buf, size);
     if (ret < 0) {
@@ -268,7 +283,15 @@ static ssize_t tmpfs_write(struct libos_handle* hdl, const void* buf, size_t siz
 
     inode->size = mem->size;
 
+#if ENABLE_SLSAN
+    file_off_t orig_pos = *pos;
+#endif
     *pos = actual_pos + ret;
+#if ENABLE_SLSAN
+    if (orig_pos != *pos) {
+        log_file_pos(__FUNCTION__, true, hdl, hdl->id, &hdl->pos, hdl->uri, pos, orig_pos, *pos);
+    }
+#endif
     inode->mtime = time_us / USEC_IN_SEC;
     /* keep `ret` */
 

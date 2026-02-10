@@ -118,7 +118,11 @@ void append_r_debug(const char* uri, void* addr) {
     new->l_addr = addr;
     new->l_name = new_uri;
 
+#if FAST_IP_OFFSET
+    log_always("adding %s at %p", uri, addr);
+#else
     log_debug("adding %s at %p", uri, addr);
+#endif
     LISTP_ADD_TAIL(new, &g_link_map_list, list);
     PalDebugMapAdd(uri, addr);
 

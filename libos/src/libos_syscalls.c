@@ -3,18 +3,22 @@
  *                    Borys Popławski <borysp@invisiblethingslab.com>
  */
 
+#include <assert.h>
 #include "asan.h"
 #include "libos_defs.h"
 #include "libos_internal.h"
 #include "libos_lock.h"
+#include "libos_process.h"
 #include "libos_signal.h"
 #include "libos_table.h"
 #include "libos_tcb.h"
 #include "libos_thread.h"
 #include "libos_utils.h"
 #include "linux_abi/errors.h"
+#include "pal.h"
 #include "toml_utils.h"
 
+void* slsan_syscall_context[256][256];
 typedef arch_syscall_arg_t (*six_args_syscall_t)(arch_syscall_arg_t, arch_syscall_arg_t,
                                                  arch_syscall_arg_t, arch_syscall_arg_t,
                                                  arch_syscall_arg_t, arch_syscall_arg_t);
@@ -63,7 +67,14 @@ noreturn void libos_emulate_syscall(PAL_CONTEXT* context) {
         six_args_syscall_t syscall_func = (six_args_syscall_t)libos_syscall_table[sysnr];
 
         debug_print_syscall_before(sysnr, ALL_SYSCALL_ARGS(context));
+#if ENABLE_SLSAN
+        PAL_CONTEXT* old_context = slsan_syscall_context[g_process.pid][get_cur_tid()];
+        slsan_syscall_context[g_process.pid][get_cur_tid()] = context;
+#endif
         ret = syscall_func(ALL_SYSCALL_ARGS(context));
+#if ENABLE_SLSAN
+        slsan_syscall_context[g_process.pid][get_cur_tid()] = old_context;
+#endif
         debug_print_syscall_after(sysnr, ret, ALL_SYSCALL_ARGS(context));
     }
 out:

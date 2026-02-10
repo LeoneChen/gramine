@@ -12,6 +12,7 @@
 
 #include "libos_fs_pseudo.h"
 #include "libos_lock.h"
+#include "libos_process.h"
 #include "stat.h"
 
 LISTP_TYPE(pseudo_node) g_pseudo_roots = LISTP_INIT;
@@ -336,9 +337,20 @@ static ssize_t pseudo_read(struct libos_handle* hdl, void* buf, size_t size, fil
         case PSEUDO_STR: {
             assert(hdl->type == TYPE_STR);
             lock(&hdl->lock);
+#if ENABLE_SLSAN
+            log_file_pos(__FUNCTION__, false, hdl, hdl->id, &hdl->pos, hdl->uri, pos, *pos, -1);
+#endif
             ssize_t ret = mem_file_read(&hdl->info.str.mem, *pos, buf, size);
-            if (ret > 0)
+            if (ret > 0) {
+#if ENABLE_SLSAN
+                file_off_t orig_pos = *pos;
+#endif
                 *pos += ret;
+#if ENABLE_SLSAN
+                log_file_pos(__FUNCTION__, true, hdl, hdl->id, &hdl->pos, hdl->uri, pos, orig_pos,
+                             *pos);
+#endif
+            }
             unlock(&hdl->lock);
             return ret;
         }
@@ -380,10 +392,22 @@ static ssize_t pseudo_write(struct libos_handle* hdl, const void* buf, size_t si
                 *pos = 0;
             }
 
+#if ENABLE_SLSAN
+            log_file_pos(__FUNCTION__, false, hdl, hdl->id, &hdl->pos, hdl->uri, pos, *pos, -1);
+#endif
             ret = mem_file_write(mem, *pos, buf, size);
             if (ret < 0)
                 goto out;
+#if ENABLE_SLSAN
+            file_off_t orig_pos = *pos;
+#endif
             *pos += ret;
+#if ENABLE_SLSAN
+            if (orig_pos != *pos) {
+                log_file_pos(__FUNCTION__, true, hdl, hdl->id, &hdl->pos, hdl->uri, pos, orig_pos,
+                             *pos);
+            }
+#endif
 
         out:
             unlock(&hdl->lock);
@@ -407,9 +431,21 @@ static file_off_t pseudo_seek(struct libos_handle* hdl, file_off_t offset, int w
     switch (node->type) {
         case PSEUDO_STR: {
             lock(&hdl->lock);
+#if ENABLE_SLSAN
+            if (whence == SEEK_CUR) {
+                log_file_pos(__FUNCTION__, false, hdl, hdl->id, &hdl->pos, hdl->uri, &hdl->pos,
+                             hdl->pos, -1);
+            }
+#endif
             file_off_t pos = hdl->pos;
             ret = generic_seek(pos, hdl->info.str.mem.size, offset, whence, &pos);
             if (ret == 0) {
+#if ENABLE_SLSAN
+                if (hdl->pos != pos) {
+                    log_file_pos(__FUNCTION__, true, hdl, hdl->id, &hdl->pos, hdl->uri, &hdl->pos,
+                                 hdl->pos, pos);
+                }
+#endif
                 hdl->pos = pos;
                 ret = pos;
             }

@@ -47,3 +47,4 @@ TAGS
 cscope.*
 ncscope.*
 *cscope*
+.cache/

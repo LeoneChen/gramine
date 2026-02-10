@@ -21,6 +21,7 @@
 #include "libos_lock.h"
 #include "libos_utils.h"
 #include "libos_vma.h"
+#include "libos_process.h"
 #include "linux_abi/errors.h"
 #include "linux_abi/fs.h"
 #include "linux_abi/memory.h"
@@ -592,6 +593,9 @@ static ssize_t chroot_read(struct libos_handle* hdl, void* buf, size_t count, fi
     assert(hdl->type == TYPE_CHROOT);
 
     int ret;
+#if ENABLE_SLSAN
+    log_file_pos(__FUNCTION__, false, hdl, hdl->id, &hdl->pos, hdl->uri, pos, *pos, -1);
+#endif
     uint64_t offset = *pos;
     uint64_t end = count + offset;
 
@@ -609,7 +613,16 @@ static ssize_t chroot_read(struct libos_handle* hdl, void* buf, size_t count, fi
     }
 
     if (hdl->inode->type == S_IFREG) {
+#if ENABLE_SLSAN
+        file_off_t orig_pos = *pos;
+#endif
         *pos += count;
+#if ENABLE_SLSAN
+        if (orig_pos != *pos) {
+            log_file_pos(__FUNCTION__, true, hdl, hdl->id, &hdl->pos, hdl->uri, pos, orig_pos,
+                         *pos);
+        }
+#endif
     }
     return count;
 }
@@ -623,6 +636,9 @@ static ssize_t chroot_write(struct libos_handle* hdl, const void* buf, size_t co
         return -EACCES;
     }
 
+#if ENABLE_SLSAN
+    log_file_pos(__FUNCTION__, false, hdl, hdl->id, &hdl->pos, hdl->uri, pos, *pos, -1);
+#endif
     file_off_t actual_pos = *pos;
     lock(&hdl->inode->lock);
     if (hdl->inode->type == S_IFREG && (hdl->flags & O_APPEND))
@@ -636,7 +652,16 @@ static ssize_t chroot_write(struct libos_handle* hdl, const void* buf, size_t co
 
     size_t new_size = 0;
     if (hdl->inode->type == S_IFREG) {
+#if ENABLE_SLSAN
+        file_off_t orig_pos = *pos;
+#endif
         *pos = actual_pos + count;
+#if ENABLE_SLSAN
+        if (orig_pos != *pos) {
+            log_file_pos(__FUNCTION__, true, hdl, hdl->id, &hdl->pos, hdl->uri, pos, orig_pos,
+                         *pos);
+        }
+#endif
         /* Update file size if we just wrote past the end of file */
         lock(&hdl->inode->lock);
         if (hdl->inode->size < *pos)

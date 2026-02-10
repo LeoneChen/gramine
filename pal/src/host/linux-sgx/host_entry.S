@@ -83,7 +83,7 @@ async_exit_pointer:
     # increment per-thread AEX counter for stats
     lock incq %gs:PAL_HOST_TCB_AEX_CNT
 
-#ifdef DEBUG
+#ifdef XDEBUG
     # Inform that we are in AEX profiling code
     movb $1, %gs:PAL_HOST_TCB_IN_AEX_PROF
     # Save ERESUME parameters

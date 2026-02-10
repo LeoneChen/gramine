@@ -14,6 +14,9 @@
 #include "list.h"
 #include "pal.h"
 
+#define ENABLE_SLSAN   1
+#define FAST_IP_OFFSET 1
+
 extern struct libos_rwlock g_process_id_lock;
 
 DEFINE_LIST(libos_child_process);
@@ -101,3 +104,7 @@ bool mark_child_exited_by_pid(IDTYPE pid, IDTYPE child_uid, int exit_code, int s
  * Returns `true` if the process \p pid is found in the zombie list of `g_process`.
  */
 bool is_zombie_process(IDTYPE pid);
+
+void log_file_pos(const char* where, bool is_write, void* hdl, uint64_t hdl_id, void* hdl_pos,
+                  char* hdl_uri, void* real_pos, file_off_t orig_pos_value,
+                  file_off_t new_pos_value);

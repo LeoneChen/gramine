@@ -20,6 +20,8 @@
 #include "mbedtls/sha256.h"
 #include "pal_error.h"
 
+#define ENABLE_SLSAN 1
+
 /* This is declared in pal_internal.h, but that can't be included here. */
 int PalRandomBitsRead(void* buffer, size_t size);
 
@@ -415,6 +417,13 @@ int lib_SSLHandshake(LIB_SSL_CONTEXT* ssl_ctx) {
 
 int lib_SSLRead(LIB_SSL_CONTEXT* ssl_ctx, uint8_t* buf, size_t buf_size) {
     int ret = mbedtls_ssl_read(&ssl_ctx->ssl, buf, buf_size);
+#if ENABLE_SLSAN
+    if (ret == MBEDTLS_ERR_SSL_INVALID_MAC) {
+        log_warning(
+            "Possible TLS counter bug in Gramine, see "
+            "https://github.com/gramineproject/gramine/issues/2144");
+    }
+#endif
     if (ret < 0)
         return mbedtls_to_pal_error(ret);
     return ret;
