@@ -1736,7 +1736,7 @@ void debug_print_syscall_before(unsigned long sysno, ...) {
     buf_flush(&buf);
 }
 
-void debug_print_syscall_after(unsigned long sysno, ...) {
+void debug_print_syscall_after(unsigned long sysno, PAL_CONTEXT* ctx, ...) {
     if (g_log_level < LOG_LEVEL_TRACE)
         return;
 
@@ -1745,10 +1745,10 @@ void debug_print_syscall_after(unsigned long sysno, ...) {
     struct print_buf buf = INIT_PRINT_BUF(buf_write_all);
 
     va_list ap;
-    va_start(ap, sysno);
+    va_start(ap, ctx);
 
     /* Skip return value, as it's passed as first argument. */
-    va_arg(ap, long);
+    long ret = va_arg(ap, long);
 
     if (parser->slow) {
         buf_puts(&buf, "---- return from ");
@@ -1776,9 +1776,23 @@ void debug_print_syscall_after(unsigned long sysno, ...) {
     if (parser->parser[0]) {
         buf_puts(&buf, " = ");
         /* Return value is passed as the first argument, restart the list. */
-        va_start(ap, sysno);
+        va_start(ap, ctx);
         parser->parser[0](&buf, &ap);
         va_end(ap);
+    }
+
+    /* Append app-level backtrace for risk pattern analysis:
+     * - On any error (ret < 0)
+     * - On clone/fork/vfork success (ret > 0 = child tid): caller site matters for Pattern 2.2
+     * - On stat family (always): caller site matters for Pattern analysis */
+    bool is_fork_like = (sysno == __NR_clone || sysno == __NR_fork || sysno == __NR_vfork);
+    bool is_stat_like = (sysno == __NR_stat || sysno == __NR_lstat || sysno == __NR_fstat
+                      || sysno == __NR_newfstatat || sysno == __NR_statx);
+    if ((ret < 0 || (is_fork_like && ret > 0) || is_stat_like) && ctx) {
+        char bt_buf[512] = {0};
+        libos_capture_stack_trace(bt_buf, sizeof(bt_buf), ctx);
+        buf_printf(&buf, " app_rip=0x%lx app_stack=[%s]",
+                   (unsigned long)pal_context_get_ip(ctx), bt_buf);
     }
 
     buf_flush(&buf);

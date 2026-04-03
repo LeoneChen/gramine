@@ -12,7 +12,9 @@
 #include "libos_ipc.h"
 #include "libos_lock.h"
 #include "libos_process.h"
+#include "libos_thread.h"
 #include "pal.h"
+#include "pal_arch.h"
 
 int g_log_level = LOG_LEVEL_NONE;
 
@@ -99,5 +101,50 @@ void libos_log(int level, const char* file, const char* func, uint64_t line, con
         buf_printf(&buf, "\n");
 
         buf_flush(&buf);
+    }
+}
+
+void libos_capture_stack_trace(char* buf, size_t buf_sz, PAL_CONTEXT* regs) {
+    if (!regs || buf_sz == 0)
+        return;
+
+    struct libos_thread* cur_thread = get_cur_thread();
+    if (!cur_thread)
+        return;
+
+    uintptr_t stack_lo = (uintptr_t)cur_thread->stack;
+    uintptr_t stack_hi = (uintptr_t)cur_thread->stack_top;
+
+    char* p = buf;
+    char* end = buf + buf_sz - 1;
+
+    /* Frame 0: rip (syscall call site, inside libc) */
+    uintptr_t rip = regs->rip;
+    int n = snprintf(p, end - p, "0x%lx ", rip);
+    if (n > 0 && p + n < end) p += n;
+
+    /* Frame 1: *rsp = return address to direct caller (missing frame for -O2 libc) */
+    uintptr_t rsp = regs->rsp;
+    if (IS_ALIGNED(rsp, 8) && rsp > stack_lo && rsp < stack_hi) {
+        uintptr_t ret_addr = *(uintptr_t*)rsp;
+        if (ret_addr) {
+            n = snprintf(p, end - p, "0x%lx ", ret_addr);
+            if (n > 0 && p + n < end) p += n;
+        }
+    }
+
+    /* Frame 2+: walk rbp chain within stack bounds */
+    uintptr_t rbp = regs->rbp;
+    uintptr_t prev_rbp = 0;
+    for (int i = 0; i < 50; i++) {
+        if (!IS_ALIGNED(rbp, 8) || rbp <= prev_rbp || rbp <= stack_lo || rbp >= stack_hi)
+            break;
+        uintptr_t ret = *(uintptr_t*)(rbp + 8);
+        if (!ret) break;
+        n = snprintf(p, end - p, "0x%lx ", ret);
+        if (n <= 0 || p + n >= end) break;
+        p += n;
+        prev_rbp = rbp;
+        rbp = *(uintptr_t*)rbp;
     }
 }

@@ -1,19 +1,24 @@
-libos.entrypoint = "{{ entrypoint }}"
+libos.entrypoint = "/bin/bash"
 
+loader.log_level = "{{ log_level }}"
 loader.env.LD_LIBRARY_PATH = "/lib:{{ arch_libdir }}:/usr/lib:/usr/lib64"
-loader.env.PATH = "/bin:/usr/bin:."
+loader.env.PATH = "/bin:/usr/bin:/usr/sbin:.:/opt/ltp/testcases/bin/"
 loader.env.LD_PRELOAD = "{{ coreutils_libdir }}/libstdbuf.so"
 loader.env._STDBUF_O = "L"
+loader.env.LTPROOT = "/opt/ltp/"
+loader.env.KCONFIG_SKIP_CHECK = "1"
 loader.insecure__use_cmdline_argv = true
 
-fs.root.uri = "file:{{ binary_dir }}"
-
+fs.root.type = "tmpfs"
 fs.mounts = [
   { path = "/etc", uri = "file:/etc" },
   { path = "/lib", uri = "file:{{ gramine.runtimedir() }}" },
   { path = "{{ arch_libdir }}", uri = "file:{{ arch_libdir }}" },
   { path = "/usr", uri = "file:/usr" },
   { path = "/tmp", uri = "file:/tmp" },
+  { path = "/bin", uri = "file:/bin" },
+  { path = "/run.sh", uri = "file:run.sh" },
+  { path = "/opt/ltp/testcases/bin/", uri = "file:{{ install_dir }}/testcases/bin/" },
 
   # many LTP multi-process tests rely on shared-memory IPC via `mmap(MAP_SHARED, </dev/shm fd>)`
   { type = "untrusted_shm", path = "/dev/shm", uri = "dev:/dev/shm" },
@@ -22,31 +27,52 @@ fs.mounts = [
 # for flock tests
 sys.experimental__enable_flock = true
 
+# sys.insecure__allow_eventfd = true
+
 sys.brk.max_size = "32M"
 sys.stack.size = "4M"
+# sgx.enclave_size = "1G"
 sgx.debug = true
 sgx.edmm_enable = {{ 'true' if env.get('EDMM', '0') == '1' else 'false' }}
+sgx.max_threads = 132
+# sgx.cpu_features.avx = "disabled"
+# sgx.cpu_features.avx512 = "disabled"
+# sgx.cpu_features.amx = "disabled"
 
 # for tests that require SIGSEGV handling (e.g., setrlimit01, mmap03)
 sgx.use_exinfo = true
 
 sgx.allowed_files = [
-  "file:/etc",
   "file:/tmp",
-  "file:/usr",
-
   "dev:/dev/shm/", # for tests that rely on shared-memory IPC, see note above
-
-  "file:install/testcases/bin/execl01_child",   # for execl01 test
-  "file:install/testcases/bin/execlp01_child",  # for execlp01 test
-  "file:install/testcases/bin/execv01_child",   # for execv01 test
-  "file:install/testcases/bin/execvp01_child",  # for execvp01 test
+  "file:{{ install_dir }}/testcases/bin/",
 ]
 
 sgx.trusted_files = [
-  "file:{{ binary_dir }}/{{ entrypoint }}",
+  "file:{{ arch_libdir }}/",
   "file:{{ gramine.runtimedir() }}/",
   "file:{{ coreutils_libdir }}/libstdbuf.so",
+  "file:/etc/nsswitch.conf",
+  "file:/etc/group",
+  "file:/etc/passwd",
+  "file:/etc/host.conf",
+  "file:/etc/hosts",
+  "file:/etc/resolv.conf",
+  "file:/etc/localtime",
+  "file:/etc/timezone",
+  "file:/etc/modprobe.d/",
+  "file:/bin/bash",
+  "file:/bin/echo",
+  "file:/bin/cp",
+  "file:/bin/sh",
+  "file:/bin/cut",
+  "file:/bin/xargs",
+  "file:/bin/timeout",
+  "file:/bin/cat",
+  "file:/bin/ls",
+  "file:/bin/true",
+  "file:/usr/sbin/modprobe",
+  "file:run.sh",
 ]
 
 # below IOCTL is for socket ioctl tests (e.g. `sockioctl01`); note that there is no additional
@@ -58,6 +84,20 @@ sys.ioctl_structs.ifconf = [
   { ptr = [ { size = "ifc_len", direction = "in" } ] }, # ifc_req
 ]
 
+sys.ioctl_structs.gifreq = [
+  { size = 16, direction = "out", name = "ifr_ifrn" },
+  { size = 24, direction = "in", name = "ifr_ifru" },
+]
+
+sys.ioctl_structs.sifreq = [
+  { size = 16, direction = "out", name = "ifr_ifrn" },
+  { size = 24, direction = "inout", name = "ifr_ifru" },
+]
+
 sys.allowed_ioctls = [
+  { request_code = 0x8905, struct = "" }, # SIOCATMARK
   { request_code = 0x8912, struct = "ifconf" }, # SIOCGIFCONF
+  { request_code = 0x8913, struct = "gifreq" }, # SIOCGIFFLAGS
+  { request_code = 0x8914, struct = "sifreq" }, # SIOCSIFFLAGS
+  { request_code = 0x8922, struct = "sifreq" }, # SIOCSIFMTU
 ]

@@ -11,6 +11,7 @@
 
 #include <limits.h>
 
+#include "libos_context.h"
 #include "libos_internal.h"
 #include "libos_ipc.h"
 #include "libos_lock.h"
@@ -174,6 +175,9 @@ long libos_syscall_sigaltstack(const stack_t* ss, stack_t* oss) {
             }
 
             *cur_ss = *ss;
+            log_debug("sigaltstack: ss_sp=%p ss_size=%zu xsave_size=%lu %s", cur_ss->ss_sp,
+                      cur_ss->ss_size, (unsigned long)libos_xstate_size(),
+                      cur_ss->ss_size >= (size_t)libos_xstate_size() ? "OK" : "OVERFLOW_RISK");
         }
     }
 

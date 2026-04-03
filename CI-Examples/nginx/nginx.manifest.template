@@ -9,7 +9,7 @@ loader.log_level = "{{ log_level }}"
 
 loader.env.LD_LIBRARY_PATH = "/lib:{{ arch_libdir }}:/usr/{{ arch_libdir }}"
 
-loader.argv_src_file = "file:nginx_args"
+loader.insecure__use_cmdline_argv = true
 
 # Gramine by default reports the root user (uid = 0) to applications. This default behavior forces
 # Nginx to attempt to drop privileges and assume some non-privileged user ID via setuid(), which is
@@ -24,7 +24,9 @@ fs.mounts = [
   { path = "/lib", uri = "file:{{ gramine.runtimedir() }}" },
   { path = "{{ arch_libdir }}", uri = "file:{{ arch_libdir }}" },
   { path = "/usr{{ arch_libdir }}", uri = "file:/usr{{ arch_libdir }}" },
-  { path = "{{ install_dir_abspath }}", uri = "file:{{ install_dir }}" },
+  { path = "{{ install_dir }}", uri = "file:{{ install_dir }}" },
+  { path = "/tmp/", uri = "file:/tmp/" },
+  { type = "tmpfs", path = "{{ install_dir }}/cache/" },
 ]
 
 sgx.debug = true
@@ -37,17 +39,16 @@ sgx.max_threads = {{ '1' if env.get('EDMM', '0') == '1' else '4' }}
 sgx.use_exinfo = {{ 'true' if env.get('EDMM', '0') == '1' else 'false' }}
 
 sgx.trusted_files = [
-  "file:{{ install_dir }}/sbin/nginx",
-  "file:{{ install_dir }}/conf/",
-  "file:{{ install_dir }}/html/",
+  "file:{{ install_dir }}/",
   "file:{{ gramine.runtimedir() }}/",
   "file:{{ arch_libdir }}/",
   "file:/usr/{{ arch_libdir }}/",
-  "file:nginx_args",
 ]
 
 # For simplicity, Nginx logs are not protected. In production, you must either disable logs in Nginx
 # or mount them as "encrypted" files.
 sgx.allowed_files = [
   "file:{{ install_dir }}/logs",
+  "file:/tmp/",
+  "file:{{ install_dir }}/conf/",
 ]

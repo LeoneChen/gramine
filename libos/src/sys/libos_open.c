@@ -20,6 +20,7 @@
 #include "linux_abi/errors.h"
 #include "linux_abi/fs.h"
 #include "linux_abi/memory.h"
+#include "pal_arch.h"
 #include "stat.h"
 
 ssize_t do_handle_read(struct libos_handle* hdl, void* buf, size_t count) {
@@ -49,7 +50,25 @@ long libos_syscall_read(int fd, void* buf, size_t count) {
     if (!hdl)
         return -EBADF;
 
+    /* Collect app-level call stack via frame pointer unwinding.
+     * Key insight: when libc read() calls syscall, it does NOT push rbp.
+     * So at syscall entry:
+     *   rip = inside libc read()
+     *   rsp → return address back to caller (e.g. fork08.c:44)  ← MUST read this first!
+     *   rbp = caller's frame (e.g. run() frame)
+     *   rbp+8 = run()'s return address (e.g. run_tests:1617)
+     *
+     * We collect: rip, *rsp (the missing frame!), then walk rbp chain.
+     */
+    PAL_CONTEXT* _regs = libos_get_tcb()->context.regs;
+    uintptr_t app_rip = _regs ? pal_context_get_ip(_regs) : 0;
+    char app_stack_buf[256] = {0};
+    libos_capture_stack_trace(app_stack_buf, sizeof(app_stack_buf), _regs);
+    log_trace("file_read: hdl_id=%lu, hdl_uri=%s, fd=%d, offset=%ld, count=%zu, app_rip=0x%lx, app_stack=[%s]",
+              hdl->id, hdl->uri, fd, hdl->pos, count, app_rip, app_stack_buf);
     ssize_t ret = do_handle_read(hdl, buf, count);
+    log_trace("file_read_done: hdl_id=%lu, hdl_uri=%s, fd=%d, offset=%ld, ret=%zd",
+              hdl->id, hdl->uri, fd, hdl->pos, ret);
     put_handle(hdl);
     if (ret == -EINTR) {
         ret = -ERESTARTSYS;
@@ -84,7 +103,14 @@ long libos_syscall_write(int fd, const void* buf, size_t count) {
     if (!hdl)
         return -EBADF;
 
+    PAL_CONTEXT* _wregs = libos_get_tcb()->context.regs;
+    uintptr_t write_rip = _wregs ? pal_context_get_ip(_wregs) : 0;
+    char write_stack_buf[256] = {0};
+    libos_capture_stack_trace(write_stack_buf, sizeof(write_stack_buf), _wregs);
+    log_trace("file_write: hdl_id=%lu, hdl_uri=%s, fd=%d, offset=%ld, count=%zu, app_rip=0x%lx, app_stack=[%s]",
+              hdl->id, hdl->uri, fd, hdl->pos, count, write_rip, write_stack_buf);
     ssize_t ret = do_handle_write(hdl, buf, count);
+    log_trace("file_write_done: hdl_id=%lu, hdl_uri=%s, fd=%d, offset=%ld, ret=%zd", hdl->id, hdl->uri, fd, hdl->pos, ret);
     put_handle(hdl);
     if (ret == -EINTR) {
         ret = -ERESTARTSYS;
@@ -236,6 +262,16 @@ long libos_syscall_lseek(int fd, off_t offset, int origin) {
     off_t ret = 0;
     if (hdl->is_dir) {
         ret = do_lseek_dir(hdl, offset, origin);
+        if (ret >= 0) {
+            const char* origin_str = (origin == SEEK_SET) ? "SEEK_SET"
+                                   : (origin == SEEK_CUR) ? "SEEK_CUR" : "SEEK_END";
+            PAL_CONTEXT* _regs = libos_get_tcb()->context.regs;
+            uintptr_t app_rip = _regs ? pal_context_get_ip(_regs) : 0;
+            char app_stack_buf[256] = {0};
+            libos_capture_stack_trace(app_stack_buf, sizeof(app_stack_buf), _regs);
+            log_trace("file_lseek: hdl_id=%lu, hdl_uri=%s, fd=%d, offset=%ld, whence=%s, new_offset=%ld, app_rip=0x%lx, app_stack=[%s]",
+                      hdl->id, hdl->uri, fd, offset, origin_str, ret, app_rip, app_stack_buf);
+        }
         goto out;
     }
 
@@ -248,6 +284,16 @@ long libos_syscall_lseek(int fd, off_t offset, int origin) {
     }
 
     ret = fs->fs_ops->seek(hdl, offset, origin);
+    if (ret >= 0) {
+        const char* origin_str = (origin == SEEK_SET) ? "SEEK_SET"
+                               : (origin == SEEK_CUR) ? "SEEK_CUR" : "SEEK_END";
+        PAL_CONTEXT* _regs = libos_get_tcb()->context.regs;
+        uintptr_t app_rip = _regs ? pal_context_get_ip(_regs) : 0;
+        char app_stack_buf[256] = {0};
+        libos_capture_stack_trace(app_stack_buf, sizeof(app_stack_buf), _regs);
+        log_trace("file_lseek: hdl_id=%lu, hdl_uri=%s, fd=%d, offset=%ld, whence=%s, new_offset=%ld, app_rip=0x%lx, app_stack=[%s]",
+                  hdl->id, hdl->uri, fd, offset, origin_str, ret, app_rip, app_stack_buf);
+    }
 out:
     put_handle(hdl);
     return ret;

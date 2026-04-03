@@ -157,7 +157,8 @@ int init_eventfd_mode(void);
 void warn_unsupported_syscall(unsigned long sysno);
 void trace_mock_syscall(unsigned long sysno);
 void debug_print_syscall_before(unsigned long sysno, ...);
-void debug_print_syscall_after(unsigned long sysno, ...);
+void debug_print_syscall_after(unsigned long sysno, PAL_CONTEXT* ctx, ...);
+void libos_capture_stack_trace(char* buf, size_t buf_sz, PAL_CONTEXT* regs);
 int get_syscall_number(const char* name, unsigned long* out_sysno);
 int init_syscalls(void);
 

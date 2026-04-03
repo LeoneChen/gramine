@@ -18,7 +18,9 @@ fs.mounts = [
   { path = "{{ arch_libdir }}", uri = "file:{{ arch_libdir }}" },
   { path = "{{ install_dir }}", uri = "file:{{ install_dir }}" },
 
-  { type = "tmpfs", path = "/var/tmp" },
+  { path = "/html/", uri = "file:html/" },
+  { path = "/var/tmp/", uri = "file:tmp/" },
+  { path = "/var/log/lighttpd", uri = "file:logs/" },
 ]
 
 sgx.debug = true
@@ -33,4 +35,10 @@ sgx.trusted_files = [
   "file:lighttpd.conf",
   "file:lighttpd-generic.conf",
   "file:lighttpd-server.conf",
+]
+
+sgx.allowed_files = [
+  "file:logs/",
+  "file:html/",
+  "file:tmp/",
 ]

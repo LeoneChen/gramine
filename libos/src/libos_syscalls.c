@@ -64,7 +64,7 @@ noreturn void libos_emulate_syscall(PAL_CONTEXT* context) {
 
         debug_print_syscall_before(sysnr, ALL_SYSCALL_ARGS(context));
         ret = syscall_func(ALL_SYSCALL_ARGS(context));
-        debug_print_syscall_after(sysnr, ret, ALL_SYSCALL_ARGS(context));
+        debug_print_syscall_after(sysnr, context, ret, ALL_SYSCALL_ARGS(context));
     }
 out:
     pal_context_set_retval(context, ret);
